@@ -4,22 +4,23 @@ import (
 	"bufio"
 	"log/slog"
 	"net"
+	"time"
 
 	"github.com/florian-renfer/b0red/internal/application"
 	"github.com/florian-renfer/b0red/internal/domain"
 )
 
 type TCPServer struct {
-	logger       *slog.Logger
-	userRegistry *application.UserRegistry
-	connections  map[*domain.User]net.Conn
+	logger      *slog.Logger
+	chatService application.ChatService
+	connections map[*domain.User]net.Conn
 }
 
-func NewTCPServer(logger *slog.Logger, userRegistry *application.UserRegistry) *TCPServer {
+func NewTCPServer(logger *slog.Logger, chatService application.ChatService) *TCPServer {
 	return &TCPServer{
-		logger:       logger,
-		userRegistry: userRegistry,
-		connections:  make(map[*domain.User]net.Conn),
+		logger:      logger,
+		chatService: chatService,
+		connections: make(map[*domain.User]net.Conn),
 	}
 }
 
@@ -37,25 +38,20 @@ func (s *TCPServer) ListenAndServe(addr string) error {
 			s.logger.Error("Failed to accept connection", "error", err)
 			continue
 		}
-
-		s.logger.Debug("Accepted connection", "remote_addr", conn.RemoteAddr())
-
-		user := &domain.User{
-			Name: conn.RemoteAddr().String(),
-		}
-		s.connections[user] = conn
-		s.userRegistry.AddUser(user)
-
-		go s.readUserBytes(user, conn)
+		s.handleConnection(conn)
 	}
 }
 
-func (s *TCPServer) readUserBytes(user *domain.User, conn net.Conn) {
-	defer func() {
-		s.logger.Info("Closing connection", "remote_addr", conn.RemoteAddr())
-		conn.Close()
-	}()
+func (s *TCPServer) handleConnection(conn net.Conn) {
+	user := &domain.User{}
 
+	// FIXME: This leads to a closed connection because reading and writing is done in separate goroutines.
+	// defer func() {
+	// 	conn.Close()
+	// 	s.chatService.UnregisterConnection(user)
+	// }()
+
+	// FIXME: This is a blocking call and should be handled in a separate goroutine.
 	conn.Write([]byte("Welcome to the chat server!\nWhat's your name > "))
 	scanner := bufio.NewScanner(conn)
 
@@ -67,31 +63,33 @@ func (s *TCPServer) readUserBytes(user *domain.User, conn net.Conn) {
 		return
 	}
 
+	outbound := make(chan domain.Message, 16)
+	s.chatService.RegisterConnection(user, outbound)
+
+	go s.handeOutgoingMessage(outbound, conn)
+	go s.handleIncomingMessage(scanner, user)
+}
+
+func (s *TCPServer) handleIncomingMessage(scanner *bufio.Scanner, user *domain.User) {
 	for scanner.Scan() {
 		text := scanner.Text()
 		s.logger.Info("Received", "msg", text)
-		conn.Write([]byte(user.Name + " > "))
+
+		message := domain.Message{
+			Conetent:  text,
+			Sender:    user,
+			Timestamp: time.Now().UTC(),
+		}
+
+		s.chatService.HandleIncomingMessage(user, message)
 	}
 	if err := scanner.Err(); err != nil {
 		s.logger.Error("Connection error", "error", err)
 	}
 }
 
-func (s *TCPServer) Broadcast(message domain.Message) error {
-	for _, user := range s.userRegistry.GetUsers() {
-		connection, ok := s.connections[user]
-		if ok {
-			connection.Write([]byte(message.Conetent + "\n"))
-		}
-
+func (s *TCPServer) handeOutgoingMessage(outbound <-chan domain.Message, conn net.Conn) {
+	for message := range outbound {
+		conn.Write([]byte(message.Sender.Name + ": " + message.Conetent + "\n"))
 	}
-	return nil
-}
-
-func (s *TCPServer) Connect(user *domain.User) error {
-	return nil
-}
-
-func (s *TCPServer) Disconnect(user *domain.User) error {
-	return nil
 }

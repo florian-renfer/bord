@@ -10,8 +10,8 @@ import (
 
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	userRegistry := application.UserRegistry{}
+	chatService := &application.Chat{}
+	server := infrastructure.NewTCPServer(logger, chatService)
 
-	server := infrastructure.NewTCPServer(logger, &userRegistry)
-	application.NewChat(server)
+	server.ListenAndServe(":4000")
 }
