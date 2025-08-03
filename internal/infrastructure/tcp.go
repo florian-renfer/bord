@@ -1,6 +1,7 @@
 package infrastructure
 
 import (
+	"bufio"
 	"log/slog"
 	"net"
 
@@ -44,6 +45,35 @@ func (s *TCPServer) ListenAndServe(addr string) error {
 		}
 		s.connections[user] = conn
 		s.userRegistry.AddUser(user)
+
+		go s.readUserBytes(user, conn)
+	}
+}
+
+func (s *TCPServer) readUserBytes(user *domain.User, conn net.Conn) {
+	defer func() {
+		s.logger.Info("Closing connection", "remote_addr", conn.RemoteAddr())
+		conn.Close()
+	}()
+
+	conn.Write([]byte("Welcome to the chat server!\nWhat's your name > "))
+	scanner := bufio.NewScanner(conn)
+
+	if scanner.Scan() {
+		user.Name = scanner.Text()
+		conn.Write([]byte(user.Name + " > "))
+	} else {
+		s.logger.Warn("No name provided, closing connection")
+		return
+	}
+
+	for scanner.Scan() {
+		text := scanner.Text()
+		s.logger.Info("Received", "msg", text)
+		conn.Write([]byte(user.Name + " > "))
+	}
+	if err := scanner.Err(); err != nil {
+		s.logger.Error("Connection error", "error", err)
 	}
 }
 

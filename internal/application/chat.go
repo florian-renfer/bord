@@ -13,5 +13,5 @@ func NewChat(server domain.Server) error {
 		server,
 	}
 
-	return chat.server.ListenAndServe("4000")
+	return chat.server.ListenAndServe(":4000")
 }
