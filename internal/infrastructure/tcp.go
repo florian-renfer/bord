@@ -76,7 +76,7 @@ func (s *TCPServer) handleIncomingMessage(scanner *bufio.Scanner, user *domain.U
 		s.logger.Info("Received", "msg", text)
 
 		message := domain.Message{
-			Conetent:  text,
+			Content:   text,
 			Sender:    user,
 			Timestamp: time.Now().UTC(),
 		}
@@ -90,6 +90,6 @@ func (s *TCPServer) handleIncomingMessage(scanner *bufio.Scanner, user *domain.U
 
 func (s *TCPServer) handeOutgoingMessage(outbound <-chan domain.Message, conn net.Conn) {
 	for message := range outbound {
-		conn.Write([]byte(message.Sender.Name + ": " + message.Conetent + "\n"))
+		conn.Write([]byte(message.Sender.Name + ": " + message.Content + "\n"))
 	}
 }
